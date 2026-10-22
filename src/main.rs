@@ -148,12 +148,10 @@ fn run(cli: Cli) -> Result<(), Failure> {
             }
         }
         Action::Launch { seed, app_id } => {
-            log::trim(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
-            let list = playlist(
-                entries(&runners_dir)?,
-                &history()?,
-                &mut fastrand::Rng::new(),
-            );
+            let entries = entries(&runners_dir)?;
+            let names = entries.iter().map(Entry::name).collect();
+            log::compact(&log_path, &names).map_err(|e| format!("{}: {e}", log_path.display()))?;
+            let list = playlist(entries, &history()?, &mut fastrand::Rng::new());
             let (runner, ids) = next(&list).ok_or("no runner has anything to show")?;
             let mut argv = vec![
                 runners_dir.join(runner).display().to_string(),

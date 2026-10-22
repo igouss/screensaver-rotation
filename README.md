@@ -41,8 +41,13 @@ extension, so history follows a shader whichever runner lists it.
 The history is the run log the runners append to,
 `~/.local/state/screensaver-rotation/log`; `screensaver-rotation log-path` prints
 it, for screensavers that show things outside a rotation run (a lock screen, a
-viewer) and log them so the rotation moves past them. It is cut back to its last
-5000 lines past 1 MiB.
+viewer) and log them so the rotation moves past them.
+
+The log doesn't grow forever: when a launch finds it over 256 KiB (a few
+thousand shows), it is compacted to its latest 1000 lines and, before them,
+only the last show of each entry that still exists. Older shows, shows of
+removed entries and the stop lines between them go; every entry keeps its last
+show, so compaction never changes the rotation's order.
 
 When the idle timer fires, the launcher asks `screensaver-rotation launch` for
 the command to run: the runner of the first entry, given that runner's entries

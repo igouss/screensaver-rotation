@@ -45,7 +45,7 @@ pub struct Show {
 }
 
 impl Show {
-    fn parse(line: &str) -> Option<Self> {
+    pub(super) fn parse(line: &str) -> Option<Self> {
         let (when, rest) = line.split_once(" showing ")?;
         let (id, kind) = rest.strip_suffix(')')?.rsplit_once(" (")?;
         Some(Self {

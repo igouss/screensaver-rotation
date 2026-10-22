@@ -1,12 +1,15 @@
 //! The run log on disk: runners append to it, the rotation reads it.
 
-use std::{fs, io, path::Path};
+use std::{collections::HashSet, fs, io, path::Path};
 
-/// Past this size the log is cut back to its recent part.
-const MAX_BYTES: u64 = 1 << 20;
-/// How many of the latest lines a cut keeps; plenty of history for the
-/// rotation, which only needs each entry's last show.
-const KEEP_LINES: usize = 5000;
+use crate::domain::compaction;
+
+/// Past this size the log is compacted. Each show is a line of about 100
+/// bytes, so this is a few thousand shows, months of idle periods.
+const MAX_BYTES: u64 = 256 << 10;
+/// How many of the latest lines a compaction keeps as they are, for
+/// `history` and for reading what happened lately.
+const RECENT_LINES: usize = 1000;
 
 /// The log's text; empty if there is no log yet.
 ///
@@ -21,23 +24,22 @@ pub fn read(path: &Path) -> io::Result<String> {
     }
 }
 
-/// Cuts the log back to its last [`KEEP_LINES`] lines once it is over
-/// [`MAX_BYTES`], replacing it whole so a runner appending meanwhile can't
-/// land in a half-written file.
+/// Compacts the log once it is over [`MAX_BYTES`]: the latest
+/// [`RECENT_LINES`] stay, and before them only the last show of each of the
+/// entries in `names` (the ones that still exist). The log is replaced whole,
+/// so a runner appending meanwhile can't land in a half-written file.
 ///
 /// # Errors
 ///
 /// If the log can't be read or replaced.
-pub fn trim(path: &Path) -> io::Result<()> {
+pub fn compact(path: &Path, names: &HashSet<&str>) -> io::Result<()> {
     match fs::metadata(path) {
         Ok(meta) if meta.len() > MAX_BYTES => {}
         Ok(_) => return Ok(()),
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
     }
-    let text = read(path)?;
-    let lines: Vec<&str> = text.lines().collect();
-    let kept = lines[lines.len().saturating_sub(KEEP_LINES)..].join("\n") + "\n";
+    let kept = compaction::compact(&read(path)?, names, RECENT_LINES);
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, kept)?;
     fs::rename(&tmp, path)
@@ -49,22 +51,28 @@ mod tests {
     use std::fmt::Write as _;
 
     #[test]
-    fn a_long_log_keeps_its_latest_lines_and_a_short_one_is_left_alone() {
+    fn a_big_log_is_compacted_and_a_small_one_left_alone() {
         let dir =
             std::env::temp_dir().join(format!("screensaver-rotation-log-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("log");
-        let line = "2026-10-21 10:00:00 showing /s/x.frag (fragcoord format)";
         let mut long = String::new();
-        for i in 0..30_000 {
-            writeln!(long, "{line} {i}").unwrap();
+        writeln!(
+            long,
+            "2026-01-01 00:00:00 showing /s/old.frag (fragcoord format)"
+        )
+        .unwrap();
+        for i in 0..5000 {
+            let line = format!("2026-10-21 10:00:00 showing /s/x{i}.frag (fragcoord format)");
+            writeln!(long, "{line}").unwrap();
         }
         fs::write(&path, &long).unwrap();
-        trim(&path).unwrap();
+        compact(&path, &HashSet::from(["old", "x0"])).unwrap();
         let kept = read(&path).unwrap();
-        assert_eq!(kept.lines().count(), KEEP_LINES);
-        assert!(kept.ends_with(" 29999\n"));
-        trim(&path).unwrap();
+        assert_eq!(kept.lines().count(), 2 + RECENT_LINES);
+        assert!(kept.starts_with("2026-01-01 00:00:00 showing /s/old.frag"));
+        assert!(kept.ends_with("/s/x4999.frag (fragcoord format)\n"));
+        compact(&path, &HashSet::new()).unwrap();
         assert_eq!(read(&path).unwrap(), kept, "under the limit: untouched");
         fs::remove_dir_all(&dir).unwrap();
         assert_eq!(read(&path).unwrap(), "", "no log is an empty one");
