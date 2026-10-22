@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# Override of Omarchy's omarchy-launch-screensaver, found first through a PATH
+# line in ~/.bashrc. Asks screensaver-rotation which screensaver runs next and
+# starts it on every monitor. Falls back to Omarchy's own terminal screensaver
+# if the rotation isn't built or has nothing to show.
+
+rotation="$HOME/.local/bin/screensaver-rotation"
+stock="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-launch-screensaver"
+
+# Exit early if screensaver is already running
+pgrep -f '[o]rg.omarchy.screensaver' >/dev/null && exit 0
+
+# Allow screensaver to be turned off but also force started
+if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
+  exit 1
+fi
+
+# One seed for all monitors, so they all show the same thing.
+seed=$(((RANDOM << 15) | RANDOM))
+command=()
+if [[ -x $rotation ]]; then
+  mapfile -d '' -t command < <("$rotation" launch --seed "$seed")
+fi
+((${#command[@]})) || exec "$stock" "$@"
+
+focused=$(omarchy-hyprland-monitor-focused)
+
+hypr_focus_monitor() {
+  hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1 || hyprctl dispatch focusmonitor "$1" >/dev/null
+}
+
+hypr_exec() {
+  local command
+  printf -v command '%q ' "$@"
+
+  hyprctl dispatch "hl.dsp.exec_cmd([[$command]])" >/dev/null 2>&1 || hyprctl dispatch exec -- bash -lc "$command" >/dev/null
+}
+
+SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+
+# Listen before spawning so a fast-mapping window can't beat us to the event.
+# Stop the listener on exit, otherwise it lingers and complains about a broken
+# pipe on the next Hyprland event.
+exec {events}< <(exec socat -U - "UNIX-CONNECT:$SOCKET" 2>/dev/null)
+events_pid=$!
+trap 'kill "$events_pid" 2>/dev/null' EXIT
+
+# New windows map on the focused monitor, so wait for each instance to open
+# before moving focus to the next monitor.
+wait_for_screensaver_window() {
+  local line deadline=$((SECONDS + 5))
+  while ((SECONDS < deadline)) && IFS= read -r -t $((deadline - SECONDS)) -u "$events" line; do
+    [[ $line == openwindow\>\>*,org.omarchy.screensaver,* ]] && return 0
+  done
+}
+
+for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+  hypr_focus_monitor "$m"
+  hypr_exec "${command[@]}"
+  wait_for_screensaver_window
+done
+
+hypr_focus_monitor "$focused"
