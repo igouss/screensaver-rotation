@@ -26,6 +26,8 @@ Runners read their own settings. Today's runners:
   and it shows the first that compiles.
 - `aquarium`: [ascii-aquarium](https://github.com/igouss/ascii-aquarium); its
   entries are `sharks` and `koi`.
+- `magic`: [ascii-magic-screensaver](https://github.com/igouss/ascii-magic-screensaver);
+  its entries are the 634 ascii-magic-art pieces, as `magic:<piece>`.
 
 A runner that fails or hangs on `--list` (5 s) is left out with a warning, so
 one broken screensaver can't stop the others.
