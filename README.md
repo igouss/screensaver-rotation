@@ -39,9 +39,10 @@ played. Entries are known by name, the entry's file name without its
 extension, so history follows a shader whichever runner lists it.
 
 The history is the run log the runners append to,
-`~/.local/state/shader-screensaver/log` (it lives under the shader screensaver's
-name for now, so the history from before the split carries over). It is cut
-back to its last 5000 lines past 1 MiB.
+`~/.local/state/screensaver-rotation/log`; `screensaver-rotation log-path` prints
+it, for screensavers that show things outside a rotation run (a lock screen, a
+viewer) and log them so the rotation moves past them. It is cut back to its last
+5000 lines past 1 MiB.
 
 When the idle timer fires, the launcher asks `screensaver-rotation launch` for
 the command to run: the runner of the first entry, given that runner's entries
@@ -66,6 +67,7 @@ falls back to Omarchy's own screensaver.
     screensaver-rotation list                   # every entry, last shown or "new"
     screensaver-rotation last                   # what was that one?
     screensaver-rotation history 50             # the latest shows
+    screensaver-rotation log-path               # where the run log is
     omarchy-launch-screensaver force            # run the next one now
 
 ## Develop

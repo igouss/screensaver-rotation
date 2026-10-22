@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug, Parser)]
 #[command(version, about)]
 struct Cli {
-    /// The run log runners append to [default: $XDG_STATE_HOME/shader-screensaver/log]
+    /// The run log runners append to [default: $XDG_STATE_HOME/screensaver-rotation/log]
     #[arg(long, global = true, value_name = "FILE")]
     log: Option<PathBuf>,
 
@@ -61,6 +61,10 @@ enum Action {
     List,
     /// The name of the last entry shown
     Last,
+    /// Where the run log is, for a screensaver that shows things outside a
+    /// rotation run (a lock screen, a viewer) and logs them so the rotation
+    /// moves past them
+    LogPath,
     /// The latest shows, oldest first
     History {
         /// How many
@@ -122,12 +126,14 @@ fn state(rest: &str) -> PathBuf {
 }
 
 fn run(cli: Cli) -> Result<(), Failure> {
-    let log_path = cli.log.unwrap_or_else(|| state("shader-screensaver/log"));
+    let log_path = cli.log.unwrap_or_else(|| state("screensaver-rotation/log"));
     let runners_dir = cli
         .runners
         .unwrap_or_else(|| home(".local/lib/screensaver-rotation/runners"));
-    let history =
-        History::parse(&log::read(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?);
+    let history = || -> Result<History, Failure> {
+        let text = log::read(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
+        Ok(History::parse(&text))
+    };
     let mut out = io::stdout().lock();
     let mut print = |line: &str| writeln!(out, "{line}").map_err(Failure::from);
 
@@ -137,13 +143,17 @@ fn run(cli: Cli) -> Result<(), Failure> {
             if let Some(only) = runner {
                 entries.retain(|entry| entry.runner == only);
             }
-            for entry in playlist(entries, &history, &mut fastrand::Rng::new()) {
+            for entry in playlist(entries, &history()?, &mut fastrand::Rng::new()) {
                 print(&format!("{}\t{}", entry.runner, entry.id))?;
             }
         }
         Action::Launch { seed, app_id } => {
             log::trim(&log_path).map_err(|e| format!("{}: {e}", log_path.display()))?;
-            let list = playlist(entries(&runners_dir)?, &history, &mut fastrand::Rng::new());
+            let list = playlist(
+                entries(&runners_dir)?,
+                &history()?,
+                &mut fastrand::Rng::new(),
+            );
             let (runner, ids) = next(&list).ok_or("no runner has anything to show")?;
             let mut argv = vec![
                 runners_dir.join(runner).display().to_string(),
@@ -162,6 +172,7 @@ fn run(cli: Cli) -> Result<(), Failure> {
             }
         }
         Action::List => {
+            let history = history()?;
             for entry in entries(&runners_dir)? {
                 let when = history
                     .last_shown(entry.name())
@@ -169,11 +180,14 @@ fn run(cli: Cli) -> Result<(), Failure> {
                 print(&format!("{:<24} {:<10} {when}", entry.name(), entry.runner))?;
             }
         }
+        Action::LogPath => print(&log_path.display().to_string())?,
         Action::Last => {
+            let history = history()?;
             let show = history.shows().last().ok_or("nothing has been shown yet")?;
             print(domain::entry::name_of(&show.id))?;
         }
         Action::History { count } => {
+            let history = history()?;
             let shows = history.shows();
             for show in &shows[shows.len().saturating_sub(count)..] {
                 print(&format!(

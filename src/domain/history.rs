@@ -93,7 +93,7 @@ mod tests {
     const LOG: &str = "\
 2026-10-21 14:50:43 showing /c/shaders/yrden-circle.frag (fragcoord format)
 2026-10-21 14:50:44 stopped after 2s: key press
-2026-10-21 15:00:00 showing /c/shaders/sharks.ascii (ascii format)
+2026-10-21 15:00:00 showing sharks (ascii format)
 2026-10-21 15:48:02 showing /c/shaders/yrden-circle.frag (lock format)
 2026-10-21 16:00:00 showing koi (ascii format)
 garbage showing x (y format)

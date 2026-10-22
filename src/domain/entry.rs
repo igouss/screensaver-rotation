@@ -16,8 +16,7 @@ impl Entry {
 }
 
 /// An id's file name without its extension: a shader at `…/plasma.frag` is
-/// `plasma`, and the aquarium's `sharks` is `sharks` whether it was logged as
-/// that or, before runners listed themselves, as `…/sharks.ascii`.
+/// `plasma`, and the aquarium's `sharks` is `sharks`.
 #[must_use]
 pub fn name_of(id: &str) -> &str {
     let base = id.rsplit('/').next().unwrap_or(id);
@@ -31,7 +30,7 @@ mod tests {
     #[test]
     fn names_drop_the_directory_and_the_extension() {
         assert_eq!(name_of("/home/x/shaders/plasma.frag"), "plasma");
-        assert_eq!(name_of("/home/x/shaders/sharks.ascii"), "sharks");
+        assert_eq!(name_of("/home/x/shaders/gyroid.glsl"), "gyroid");
         assert_eq!(name_of("sharks"), "sharks");
         assert_eq!(name_of("a.b.glsl"), "a.b", "only the last extension");
         assert_eq!(name_of(""), "");
